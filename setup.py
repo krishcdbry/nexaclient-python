@@ -10,7 +10,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
     long_description = f.read()
 
 # Read version
-version = '1.0.0'
+version = '1.1.0'
 
 setup(
     name='nexadb',

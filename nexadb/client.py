@@ -25,6 +25,8 @@ MSG_VECTOR_SEARCH = 0x07
 MSG_BATCH_WRITE = 0x08
 MSG_PING = 0x09
 MSG_DISCONNECT = 0x0A
+MSG_QUERY_TOON = 0x0B
+MSG_EXPORT_TOON = 0x0C
 
 # Server → Client response types
 MSG_SUCCESS = 0x81
@@ -313,11 +315,69 @@ class NexaClient:
         """
         return self._send_message(MSG_PING, {})
 
+    def query_toon(
+        self,
+        collection: str,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Query documents with TOON format response.
+        TOON format reduces token count by 40-50% for LLM applications.
+
+        Args:
+            collection: Collection name
+            filters: Query filters (default: {})
+            limit: Max results (default: 100)
+
+        Returns:
+            Dictionary with 'data' (TOON string) and 'token_stats'
+
+        Example:
+            >>> result = db.query_toon('users', {'age': {'$gt': 25}}, 100)
+            >>> print(result['data'])
+            collection: users
+            documents[18]{_id,name,email,age}:
+              abc123,Alice,alice@example.com,28
+              ...
+            >>> print(f"Token reduction: {result['token_stats']['reduction_percent']}%")
+            Token reduction: 42.3%
+        """
+        return self._send_message(MSG_QUERY_TOON, {
+            'collection': collection,
+            'filters': filters or {},
+            'limit': limit
+        })
+
+    def export_toon(self, collection: str) -> Dict[str, Any]:
+        """
+        Export entire collection to TOON format.
+        Perfect for AI/ML pipelines that need efficient data transfer.
+
+        Args:
+            collection: Collection name
+
+        Returns:
+            Dictionary with 'data' (TOON string), 'count', and 'token_stats'
+
+        Example:
+            >>> result = db.export_toon('users')
+            >>> with open('users.toon', 'w') as f:
+            ...     f.write(result['data'])
+            >>> print(f"Exported {result['count']} documents")
+            >>> print(f"Token reduction: {result['token_stats']['reduction_percent']}%")
+            Exported 1000 documents
+            Token reduction: 45.2%
+        """
+        return self._send_message(MSG_EXPORT_TOON, {
+            'collection': collection
+        })
+
     def _send_connect(self) -> None:
         """Send handshake message."""
         self._send_message(MSG_CONNECT, {
             'client': 'nexadb-python',
-            'version': '1.0.0'
+            'version': '1.1.0'
         })
 
     def _send_message(self, msg_type: int, data: Dict[str, Any]) -> Dict[str, Any]:
