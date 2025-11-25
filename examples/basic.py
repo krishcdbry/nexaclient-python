@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Basic usage example for NexaDB Python client
+Basic usage example for NexaClient Python client
 """
 
-from nexadb import NexaClient
+from nexaclient import NexaClient
 
 
 def main():
     print('=' * 60)
-    print('NexaDB Python Client - Basic Usage Example')
+    print('NexaClient - Python Client for NexaDB')
     print('=' * 60)
 
     # Using context manager (recommended)
-    with NexaClient(host='localhost', port=6970) as db:
+    with NexaClient(host='localhost', port=6970, username='root', password='nexadb123') as db:
         print('\n1️⃣  Connected to NexaDB')
 
         # Create user

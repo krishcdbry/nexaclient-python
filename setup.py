@@ -1,5 +1,5 @@
 """
-Setup configuration for nexadb Python package
+Setup configuration for nexaclient Python package
 """
 
 from setuptools import setup, find_packages
@@ -10,21 +10,21 @@ with open('README.md', 'r', encoding='utf-8') as f:
     long_description = f.read()
 
 # Read version
-version = '1.1.0'
+version = '1.2.0'
 
 setup(
-    name='nexadb',
+    name='nexaclient',
     version=version,
     description='Official Python client for NexaDB - The high-performance, easy-to-use database',
     long_description=long_description,
     long_description_content_type='text/markdown',
     author='NexaDB Team',
     author_email='team@nexadb.dev',
-    url='https://github.com/krishcdbry/nexadb-python',
+    url='https://github.com/krishcdbry/nexaclient-python',
     project_urls={
         'Documentation': 'https://nexadb.dev/docs',
-        'Source': 'https://github.com/krishcdbry/nexadb-python',
-        'Tracker': 'https://github.com/krishcdbry/nexadb-python/issues',
+        'Source': 'https://github.com/krishcdbry/nexaclient-python',
+        'Tracker': 'https://github.com/krishcdbry/nexaclient-python/issues',
     },
     packages=find_packages(),
     install_requires=[
@@ -45,6 +45,6 @@ setup(
         'Topic :: Database',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    keywords='nexadb database nosql lsm-tree vector-search binary-protocol client high-performance',
+    keywords='nexaclient nexadb database nosql lsm-tree vector-search binary-protocol client high-performance',
     license='MIT',
 )

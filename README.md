@@ -1,4 +1,4 @@
-# NexaDB Python Client
+# NexaClient (Python)
 
 Official Python client for NexaDB - The high-performance, easy-to-use database.
 
@@ -14,16 +14,16 @@ Official Python client for NexaDB - The high-performance, easy-to-use database.
 ## Installation
 
 ```bash
-pip install nexadb
+pip install nexaclient
 ```
 
 ## Quick Start
 
 ```python
-from nexadb import NexaClient
+from nexaclient import NexaClient
 
 # Using context manager (recommended)
-with NexaClient(host='localhost', port=6970) as db:
+with NexaClient(host='localhost', port=6970, username='root', password='nexadb123') as db:
     # Create document
     user = db.create('users', {
         'name': 'John Doe',
@@ -54,6 +54,8 @@ db = NexaClient(host='localhost', port=6970, timeout=30)
 **Parameters:**
 - `host` (str) - Server host (default: 'localhost')
 - `port` (int) - Server port (default: 6970)
+- `username` (str) - Username for authentication (default: 'root')
+- `password` (str) - Password for authentication (default: 'nexadb123')
 - `timeout` (int) - Connection timeout in seconds (default: 30)
 
 ### Methods
@@ -161,7 +163,7 @@ db.disconnect()
 The recommended way to use NexaClient is with a context manager:
 
 ```python
-with NexaClient(host='localhost', port=6970) as db:
+with NexaClient(host='localhost', port=6970, username='root', password='nexadb123') as db:
     # Connection is automatically established
     user = db.create('users', {'name': 'John'})
     # Connection is automatically closed when exiting the block
@@ -184,7 +186,7 @@ NexaClient uses a custom binary protocol for maximum performance:
 ### Basic CRUD
 
 ```python
-from nexadb import NexaClient
+from nexaclient import NexaClient
 
 with NexaClient() as db:
     # Create
@@ -272,7 +274,7 @@ with NexaClient() as db:
 | Write speed | ~50K/s | ~89K/s |
 | Memory | 2-4 GB | 111 MB |
 | Protocol | Custom binary | Custom binary |
-| Python client | `pymongo` | `nexadb` (this package) |
+| Python client | `pymongo` | `nexaclient` (this package) |
 
 ## License
 
@@ -281,7 +283,7 @@ MIT
 ## Links
 
 - [NexaDB GitHub](https://github.com/krishcdbry/nexadb)
-- [Python Client GitHub](https://github.com/krishcdbry/nexadb-python)
+- [Python Client GitHub](https://github.com/krishcdbry/nexaclient-python)
 - [Documentation](https://nexadb.dev/docs)
 - [NPM Client](https://www.npmjs.com/package/nexaclient)
 
@@ -292,5 +294,5 @@ Contributions are welcome! Please open an issue or PR on GitHub.
 ## Support
 
 For support, please:
-- Open an issue on [GitHub](https://github.com/krishcdbry/nexadb-python/issues)
+- Open an issue on [GitHub](https://github.com/krishcdbry/nexaclient-python/issues)
 - Email: support@nexadb.dev

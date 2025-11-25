@@ -50,14 +50,14 @@ class NexaClient:
 
     Usage:
         # Context manager (recommended)
-        with NexaClient(host='localhost', port=6970) as db:
+        with NexaClient(host='localhost', port=6970, username='root', password='nexadb123') as db:
             user = db.create('users', {'name': 'John', 'email': 'john@example.com'})
             found = db.get('users', user['document_id'])
             db.update('users', user['document_id'], {'age': 30})
             db.delete('users', user['document_id'])
 
         # Manual connection
-        db = NexaClient(host='localhost', port=6970)
+        db = NexaClient(host='localhost', port=6970, username='root', password='nexadb123')
         db.connect()
         user = db.create('users', {'name': 'John', 'email': 'john@example.com'})
         db.disconnect()
@@ -67,6 +67,8 @@ class NexaClient:
         self,
         host: str = 'localhost',
         port: int = 6970,
+        username: str = 'root',
+        password: str = 'nexadb123',
         timeout: int = 30
     ):
         """
@@ -75,10 +77,14 @@ class NexaClient:
         Args:
             host: Server host (default: 'localhost')
             port: Server port (default: 6970)
+            username: Username for authentication (default: 'root')
+            password: Password for authentication (default: 'nexadb123')
             timeout: Connection timeout in seconds (default: 30)
         """
         self.host = host
         self.port = port
+        self.username = username
+        self.password = password
         self.timeout = timeout
 
         self.socket: Optional[socket.socket] = None
@@ -374,10 +380,10 @@ class NexaClient:
         })
 
     def _send_connect(self) -> None:
-        """Send handshake message."""
+        """Send authentication handshake."""
         self._send_message(MSG_CONNECT, {
-            'client': 'nexadb-python',
-            'version': '1.1.0'
+            'username': self.username,
+            'password': self.password
         })
 
     def _send_message(self, msg_type: int, data: Dict[str, Any]) -> Dict[str, Any]:
