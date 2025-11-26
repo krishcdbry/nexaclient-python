@@ -27,6 +27,7 @@ MSG_PING = 0x09
 MSG_DISCONNECT = 0x0A
 MSG_QUERY_TOON = 0x0B
 MSG_EXPORT_TOON = 0x0C
+MSG_LIST_COLLECTIONS = 0x20
 
 # Server → Client response types
 MSG_SUCCESS = 0x81
@@ -378,6 +379,21 @@ class NexaClient:
         return self._send_message(MSG_EXPORT_TOON, {
             'collection': collection
         })
+
+    def list_collections(self) -> List[str]:
+        """
+        List all collections in the database.
+
+        Returns:
+            List of collection names
+
+        Example:
+            >>> collections = db.list_collections()
+            >>> print(collections)
+            ['users', 'products', 'orders']
+        """
+        response = self._send_message(MSG_LIST_COLLECTIONS, {})
+        return response.get('collections', [])
 
     def _send_connect(self) -> None:
         """Send authentication handshake."""
