@@ -6,6 +6,8 @@ High-performance binary protocol client for NexaDB.
 
 import socket
 import struct
+import threading
+import queue
 from typing import Dict, Any, List, Optional
 import msgpack
 
@@ -28,6 +30,8 @@ MSG_DISCONNECT = 0x0A
 MSG_QUERY_TOON = 0x0B
 MSG_EXPORT_TOON = 0x0C
 MSG_LIST_COLLECTIONS = 0x20
+MSG_SUBSCRIBE_CHANGES = 0x30
+MSG_UNSUBSCRIBE_CHANGES = 0x31
 
 # Server → Client response types
 MSG_SUCCESS = 0x81
@@ -35,6 +39,7 @@ MSG_ERROR = 0x82
 MSG_NOT_FOUND = 0x83
 MSG_DUPLICATE = 0x84
 MSG_PONG = 0x88
+MSG_CHANGE_EVENT = 0x90
 
 
 class NexaClient:
@@ -395,6 +400,133 @@ class NexaClient:
         response = self._send_message(MSG_LIST_COLLECTIONS, {})
         return response.get('collections', [])
 
+    def watch(self, collection: Optional[str] = None, operations: Optional[List[str]] = None):
+        """
+        Watch for database changes (MongoDB-style change streams).
+
+        This method returns an iterator that yields change events as they happen.
+        It works over the network - no filesystem access needed!
+
+        Args:
+            collection: Collection name to watch (default: watch all collections)
+            operations: List of operations to watch (default: ['insert', 'update', 'delete'])
+
+        Yields:
+            Change event dictionaries in MongoDB format
+
+        Example:
+            >>> # Watch all collections
+            >>> for change in db.watch():
+            ...     print(f"Change in {change['ns']['coll']}: {change['operationType']}")
+
+            >>> # Watch specific collection
+            >>> for change in db.watch('orders'):
+            ...     if change['operationType'] == 'insert':
+            ...         print(f"New order: {change['fullDocument']}")
+
+            >>> # Watch specific operations
+            >>> for change in db.watch('users', operations=['insert', 'update']):
+            ...     print(f"User changed: {change}")
+
+        Change Event Format:
+            {
+                'operationType': 'insert',  # insert, update, delete, dropCollection
+                'ns': {'db': 'nexadb', 'coll': 'orders'},
+                'documentKey': {'_id': 'abc123'},
+                'fullDocument': {...},  # Only for insert/update
+                'updateDescription': {...},  # Only for update
+                'timestamp': 1700000000.123
+            }
+        """
+        if not self.connected or not self.socket:
+            raise ConnectionError("Not connected to NexaDB")
+
+        # Event queue for thread communication
+        event_queue = queue.Queue()
+        stop_watching = threading.Event()
+        error_container = {'error': None}
+
+        # Subscribe to changes
+        try:
+            subscribe_response = self._send_message(MSG_SUBSCRIBE_CHANGES, {
+                'collection': collection,
+                'operations': operations or ['insert', 'update', 'delete']
+            })
+        except Exception as e:
+            raise Exception(f"Failed to subscribe to changes: {e}")
+
+        # Background thread to receive change events
+        def receive_events():
+            try:
+                while not stop_watching.is_set():
+                    try:
+                        # Set timeout to allow checking stop_watching
+                        self.socket.settimeout(1.0)
+
+                        # Read change event from server
+                        event_data = self._read_response()
+
+                        # Put event in queue for main thread
+                        event_queue.put(event_data)
+
+                    except socket.timeout:
+                        # Timeout is expected, just continue
+                        continue
+                    except Exception as e:
+                        # Store error and stop
+                        error_container['error'] = e
+                        stop_watching.set()
+                        break
+            finally:
+                # Restore normal timeout
+                if self.socket:
+                    self.socket.settimeout(self.timeout)
+
+        # Start receiver thread
+        receiver_thread = threading.Thread(target=receive_events, daemon=True)
+        receiver_thread.start()
+
+        try:
+            # Yield events as they arrive
+            while True:
+                # Check for errors from receiver thread
+                if error_container['error']:
+                    raise error_container['error']
+
+                try:
+                    # Get event with timeout to allow checking for errors
+                    event = event_queue.get(timeout=0.1)
+                    yield event
+                except queue.Empty:
+                    # No event yet, continue waiting
+                    continue
+
+        except KeyboardInterrupt:
+            # Clean shutdown on Ctrl+C
+            stop_watching.set()
+            receiver_thread.join(timeout=2.0)
+
+            # Unsubscribe from changes
+            try:
+                self._send_message(MSG_UNSUBSCRIBE_CHANGES, {})
+            except:
+                pass
+
+            raise
+
+        except Exception as e:
+            # Stop receiver thread
+            stop_watching.set()
+            receiver_thread.join(timeout=2.0)
+
+            # Try to unsubscribe
+            try:
+                self._send_message(MSG_UNSUBSCRIBE_CHANGES, {})
+            except:
+                pass
+
+            raise
+
     def _send_connect(self) -> None:
         """Send authentication handshake."""
         self._send_message(MSG_CONNECT, {
@@ -466,7 +598,7 @@ class NexaClient:
         data = msgpack.unpackb(payload, raw=False)
 
         # Handle response type
-        if msg_type == MSG_SUCCESS or msg_type == MSG_PONG:
+        if msg_type == MSG_SUCCESS or msg_type == MSG_PONG or msg_type == MSG_CHANGE_EVENT:
             return data
         elif msg_type == MSG_ERROR:
             raise Exception(data.get('error', 'Unknown error'))
