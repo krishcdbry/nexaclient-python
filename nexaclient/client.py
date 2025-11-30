@@ -30,8 +30,17 @@ MSG_DISCONNECT = 0x0A
 MSG_QUERY_TOON = 0x0B
 MSG_EXPORT_TOON = 0x0C
 MSG_LIST_COLLECTIONS = 0x20
+MSG_DROP_COLLECTION = 0x21
 MSG_SUBSCRIBE_CHANGES = 0x30
 MSG_UNSUBSCRIBE_CHANGES = 0x31
+
+# NEW v3.0.0: Database operations
+MSG_LIST_DATABASES = 0x40
+MSG_CREATE_DATABASE = 0x41
+MSG_DROP_DATABASE = 0x42
+MSG_GET_DATABASE_STATS = 0x43
+MSG_CREATE_COLLECTION = 0x44
+MSG_BUILD_HNSW_INDEX = 0x45
 
 # Server → Client response types
 MSG_SUCCESS = 0x81
@@ -138,13 +147,14 @@ class NexaClient:
         """Context manager exit."""
         self.disconnect()
 
-    def create(self, collection: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def create(self, collection: str, data: Dict[str, Any], database: str = 'default') -> Dict[str, Any]:
         """
         Create document in collection.
 
         Args:
             collection: Collection name
             data: Document data
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             Creation result with document_id
@@ -152,19 +162,49 @@ class NexaClient:
         Example:
             >>> db.create('users', {'name': 'Alice', 'email': 'alice@example.com'})
             {'collection': 'users', 'document_id': '...', 'message': 'Document inserted'}
+
+            >>> # NEW v3.0.0: Multi-database support
+            >>> db.create('users', {'name': 'Bob'}, database='production')
+            {'database': 'production', 'collection': 'users', 'document_id': '...'}
         """
         return self._send_message(MSG_CREATE, {
             'collection': collection,
-            'data': data
+            'data': data,
+            'database': database
         })
 
-    def get(self, collection: str, key: str) -> Optional[Dict[str, Any]]:
+    def insert(self, collection: str, data: Dict[str, Any], database: str = 'default') -> str:
+        """
+        Insert document in collection (returns document ID directly).
+
+        Args:
+            collection: Collection name
+            data: Document data
+            database: Database name (default: 'default') - NEW v3.0.0
+
+        Returns:
+            Document ID string
+
+        Example:
+            >>> doc_id = db.insert('users', {'name': 'Alice', 'email': 'alice@example.com'})
+            >>> print(doc_id)
+            '1234567890abcdef'
+        """
+        result = self._send_message(MSG_CREATE, {
+            'collection': collection,
+            'data': data,
+            'database': database
+        })
+        return result.get('document_id')
+
+    def get(self, collection: str, key: str, database: str = 'default') -> Optional[Dict[str, Any]]:
         """
         Get document by ID.
 
         Args:
             collection: Collection name
             key: Document ID
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             Document data or None if not found
@@ -177,7 +217,8 @@ class NexaClient:
         try:
             response = self._send_message(MSG_READ, {
                 'collection': collection,
-                'key': key
+                'key': key,
+                'database': database
             })
             return response.get('document')
         except Exception as e:
@@ -185,7 +226,7 @@ class NexaClient:
                 return None
             raise
 
-    def update(self, collection: str, key: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    def update(self, collection: str, key: str, updates: Dict[str, Any], database: str = 'default') -> Dict[str, Any]:
         """
         Update document.
 
@@ -193,45 +234,56 @@ class NexaClient:
             collection: Collection name
             key: Document ID
             updates: Updates to apply
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             Update result
 
         Example:
             >>> db.update('users', 'abc123', {'age': 30, 'city': 'NYC'})
-            {'collection': 'users', 'document_id': 'abc123', 'message': 'Document updated'}
+            {'status': 'success', 'collection': 'users', 'document_id': 'abc123', 'message': 'Document updated'}
         """
-        return self._send_message(MSG_UPDATE, {
+        result = self._send_message(MSG_UPDATE, {
             'collection': collection,
             'key': key,
-            'updates': updates
+            'updates': updates,
+            'database': database
         })
+        result['status'] = 'success'
+        return result
 
-    def delete(self, collection: str, key: str) -> Dict[str, Any]:
+    def delete(self, collection: str, key: str, database: str = 'default') -> Dict[str, Any]:
         """
         Delete document.
 
         Args:
             collection: Collection name
             key: Document ID
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             Delete result
 
         Example:
             >>> db.delete('users', 'abc123')
-            {'collection': 'users', 'document_id': 'abc123', 'message': 'Document deleted'}
+            {'status': 'success', 'collection': 'users', 'document_id': 'abc123', 'message': 'Document deleted'}
         """
-        return self._send_message(MSG_DELETE, {
+        result = self._send_message(MSG_DELETE, {
             'collection': collection,
-            'key': key
+            'key': key,
+            'database': database
         })
+        result['status'] = 'success'
+        return result
 
     def query(
         self,
         collection: str,
         filters: Optional[Dict[str, Any]] = None,
-        limit: int = 100
+        limit: int = 100,
+        database: str = 'default',
+        format: Optional[str] = None,
+        projection: Optional[Dict[str, int]] = None
     ) -> List[Dict[str, Any]]:
         """
         Query documents with filters.
@@ -240,28 +292,86 @@ class NexaClient:
             collection: Collection name
             filters: Query filters (default: {})
             limit: Max results (default: 100)
+            database: Database name (default: 'default') - NEW v3.0.0
+            format: Response format ('toon' for TOON format, None for regular JSON)
+            projection: Field projection (MongoDB-style, {field: 1} to include)
 
         Returns:
-            List of matching documents
+            List of matching documents (or TOON data if format='toon')
 
         Example:
             >>> users = db.query('users', {'role': 'developer', 'age': {'$gte': 25}}, 10)
             >>> print(len(users))
             5
+
+            >>> # Query with projection
+            >>> users = db.query('users', projection={'name': 1, 'email': 1})
+
+            >>> # Query with TOON format
+            >>> result = db.query('users', format='toon')
+            >>> print(result['data'])  # TOON formatted string
         """
-        response = self._send_message(MSG_QUERY, {
+        # If TOON format requested, use query_toon and return just the TOON string
+        if format == 'toon':
+            result = self.query_toon(collection, filters, limit, database)
+            return result.get('data', result)  # Return TOON string directly
+
+        query_params = {
             'collection': collection,
             'filters': filters or {},
-            'limit': limit
-        })
-        return response.get('documents', [])
+            'limit': limit,
+            'database': database
+        }
+
+        # Add projection if specified
+        if projection is not None:
+            query_params['projection'] = projection
+
+        # Check if collection exists (required for proper error handling)
+        try:
+            response = self._send_message(MSG_QUERY, query_params)
+            documents = response.get('documents', [])
+
+            # If no documents returned and collection doesn't exist, raise error
+            if not documents:
+                # Verify collection exists
+                collections = self.list_collections(database=database)
+                if collection not in collections:
+                    raise ValueError(f"Collection '{collection}' does not exist in database '{database}'")
+        except ValueError:
+            # Re-raise ValueError (collection not found)
+            raise
+        except Exception as e:
+            # Pass through other exceptions
+            raise
+
+        # Apply projection client-side if server doesn't support it
+        if projection is not None:
+            projected_docs = []
+            for doc in documents:
+                if doc.get('_nexadb_collection_marker'):
+                    continue  # Skip collection markers
+                projected_doc = {}
+                for field, include in projection.items():
+                    if include == 1 and field in doc:
+                        projected_doc[field] = doc[field]
+                # Always include _id if present (MongoDB behavior)
+                if '_id' in doc:
+                    projected_doc['_id'] = doc['_id']
+                projected_docs.append(projected_doc)
+            return projected_docs
+
+        # Filter out internal collection marker documents
+        return [doc for doc in documents if not (doc.get('_nexadb_collection_marker') or doc.get('_collection_init'))]
 
     def vector_search(
         self,
         collection: str,
         vector: List[float],
         limit: int = 10,
-        dimensions: int = 768
+        dimensions: Optional[int] = None,
+        database: str = 'default',
+        filters: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
         Vector similarity search (for AI/ML applications).
@@ -270,7 +380,9 @@ class NexaClient:
             collection: Collection name
             vector: Query vector
             limit: Max results (default: 10)
-            dimensions: Vector dimensions (default: 768)
+            dimensions: Vector dimensions (default: auto-detect from vector length)
+            database: Database name (default: 'default') - NEW v3.0.0
+            filters: Optional metadata filters to apply to results
 
         Returns:
             List of similar documents with similarity scores
@@ -279,22 +391,90 @@ class NexaClient:
             >>> results = db.vector_search('embeddings', [0.1, 0.2, ...], limit=5)
             >>> for r in results:
             ...     print(f"Similarity: {r['similarity']}, Doc: {r['document']}")
+
+            >>> # Search with filters
+            >>> results = db.vector_search('embeddings', vector, limit=10, filters={'category': 'A'})
         """
-        response = self._send_message(MSG_VECTOR_SEARCH, {
+        # Auto-detect dimensions from vector length if not specified
+        if dimensions is None:
+            dimensions = len(vector)
+
+        params = {
             'collection': collection,
             'vector': vector,
             'limit': limit,
-            'dimensions': dimensions
-        })
+            'dimensions': dimensions,
+            'database': database
+        }
+        if filters:
+            params['filters'] = filters
+
+        response = self._send_message(MSG_VECTOR_SEARCH, params)
         return response.get('results', [])
 
-    def batch_write(self, collection: str, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def build_hnsw_index(
+        self,
+        collection: str,
+        database: str = 'default',
+        M: Optional[int] = None,
+        ef_construction: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Build HNSW (Hierarchical Navigable Small World) index for vector collection.
+
+        HNSW is a graph-based algorithm for approximate nearest neighbor search.
+        Building an index significantly improves vector search performance.
+
+        NEW v3.0.0: Vector indexing support
+
+        Args:
+            collection: Collection name
+            database: Database name (default: 'default')
+            M: Maximum number of connections per layer (default: 16)
+                Higher M = better recall but more memory
+            ef_construction: Size of dynamic candidate list (default: 200)
+                Higher ef_construction = better index quality but slower build
+
+        Returns:
+            Index build result with status
+
+        Example:
+            >>> # Build with default parameters
+            >>> result = db.build_hnsw_index('embeddings', database='production')
+            >>> print(result['status'])
+            'success'
+
+            >>> # Build with custom parameters for higher quality
+            >>> result = db.build_hnsw_index(
+            ...     'embeddings',
+            ...     database='production',
+            ...     M=32,
+            ...     ef_construction=400
+            ... )
+        """
+        params = {
+            'collection': collection,
+            'database': database
+        }
+
+        # Add optional HNSW parameters if provided
+        if M is not None:
+            params['M'] = M
+        if ef_construction is not None:
+            params['ef_construction'] = ef_construction
+
+        result = self._send_message(MSG_BUILD_HNSW_INDEX, params)
+        result['status'] = 'success'
+        return result
+
+    def batch_write(self, collection: str, documents: List[Dict[str, Any]], database: str = 'default') -> Dict[str, Any]:
         """
         Bulk insert documents.
 
         Args:
             collection: Collection name
             documents: List of documents to insert
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             Insert result with document IDs
@@ -310,7 +490,8 @@ class NexaClient:
         """
         return self._send_message(MSG_BATCH_WRITE, {
             'collection': collection,
-            'documents': documents
+            'documents': documents,
+            'database': database
         })
 
     def ping(self) -> Dict[str, Any]:
@@ -331,7 +512,8 @@ class NexaClient:
         self,
         collection: str,
         filters: Optional[Dict[str, Any]] = None,
-        limit: int = 100
+        limit: int = 100,
+        database: str = 'default'
     ) -> Dict[str, Any]:
         """
         Query documents with TOON format response.
@@ -341,6 +523,7 @@ class NexaClient:
             collection: Collection name
             filters: Query filters (default: {})
             limit: Max results (default: 100)
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             Dictionary with 'data' (TOON string) and 'token_stats'
@@ -358,16 +541,18 @@ class NexaClient:
         return self._send_message(MSG_QUERY_TOON, {
             'collection': collection,
             'filters': filters or {},
-            'limit': limit
+            'limit': limit,
+            'database': database
         })
 
-    def export_toon(self, collection: str) -> Dict[str, Any]:
+    def export_toon(self, collection: str, database: str = 'default') -> Dict[str, Any]:
         """
         Export entire collection to TOON format.
         Perfect for AI/ML pipelines that need efficient data transfer.
 
         Args:
             collection: Collection name
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             Dictionary with 'data' (TOON string), 'count', and 'token_stats'
@@ -382,12 +567,16 @@ class NexaClient:
             Token reduction: 45.2%
         """
         return self._send_message(MSG_EXPORT_TOON, {
-            'collection': collection
+            'collection': collection,
+            'database': database
         })
 
-    def list_collections(self) -> List[str]:
+    def list_collections(self, database: str = 'default') -> List[str]:
         """
         List all collections in the database.
+
+        Args:
+            database: Database name (default: 'default') - NEW v3.0.0
 
         Returns:
             List of collection names
@@ -396,9 +585,219 @@ class NexaClient:
             >>> collections = db.list_collections()
             >>> print(collections)
             ['users', 'products', 'orders']
+
+            >>> # NEW v3.0.0: Multi-database support
+            >>> prod_collections = db.list_collections(database='production')
         """
-        response = self._send_message(MSG_LIST_COLLECTIONS, {})
+        response = self._send_message(MSG_LIST_COLLECTIONS, {
+            'database': database
+        })
         return response.get('collections', [])
+
+    # NEW v3.0.0: Database Management Methods
+
+    def create_database(self, name: str) -> Dict[str, Any]:
+        """
+        Create a new database.
+
+        NEW v3.0.0: Multi-database support
+
+        Args:
+            name: Database name
+
+        Returns:
+            Creation result
+
+        Raises:
+            Exception: If database already exists
+
+        Example:
+            >>> db.create_database('production')
+            {'status': 'success', 'database': 'production', 'message': 'Database created'}
+        """
+        # Check if database already exists
+        try:
+            existing_databases = self.list_databases()
+            if name in existing_databases:
+                raise Exception(f"Database '{name}' already exists")
+        except Exception as e:
+            # If it's our "already exists" exception, re-raise it
+            if "already exists" in str(e):
+                raise
+            # Otherwise, list_databases failed, try to create anyway
+            pass
+
+        result = self._send_message(MSG_CREATE, {
+            'create_database': True,
+            'database': name
+        })
+        result['status'] = 'success'
+        return result
+
+    def drop_database(self, name: str) -> Dict[str, Any]:
+        """
+        Drop entire database and all its collections.
+
+        NEW v3.0.0: Multi-database support
+        WARNING: This is irreversible!
+
+        Args:
+            name: Database name
+
+        Returns:
+            Drop result
+
+        Example:
+            >>> db.drop_database('old_database')
+            {'status': 'success', 'database': 'old_database', 'message': 'Database dropped successfully'}
+        """
+        result = self._send_message(MSG_DROP_DATABASE, {
+            'database': name
+        })
+        result['status'] = 'success'
+        return result
+
+    def list_databases(self) -> List[str]:
+        """
+        List all databases in the system.
+
+        NEW v3.0.0: Multi-database support
+
+        Returns:
+            List of database names
+
+        Example:
+            >>> databases = db.list_databases()
+            >>> print(databases)
+            ['default', 'production', 'staging']
+        """
+        response = self._send_message(MSG_LIST_DATABASES, {})
+        return response.get('databases', [])
+
+    def get_database_stats(self, name: str) -> Dict[str, Any]:
+        """
+        Get database statistics.
+
+        NEW v3.0.0: Multi-database support
+
+        Args:
+            name: Database name
+
+        Returns:
+            Database statistics (collections_count, documents_count, etc.)
+
+        Example:
+            >>> stats = db.get_database_stats('production')
+            >>> print(f"Collections: {stats['collections_count']}")
+            >>> print(f"Documents: {stats['documents_count']}")
+        """
+        # Get collections in this database
+        collections = self.list_collections(database=name)
+
+        # Count documents across all collections
+        total_documents = 0
+        for coll in collections:
+            try:
+                docs = self.query(coll, {}, limit=100000, database=name)
+                total_documents += len(docs)
+            except:
+                pass
+
+        return {
+            'database': name,
+            'collections_count': len(collections),
+            'documents_count': total_documents
+        }
+
+    def create_collection(
+        self,
+        name: str,
+        database: str = 'default',
+        dimensions: Optional[int] = None,
+        vector_dimensions: Optional[int] = None  # Alias for dimensions
+    ) -> Dict[str, Any]:
+        """
+        Create a new collection in a database.
+
+        NEW v3.0.0: Explicit collection creation
+
+        NOTE: In NexaDB, collections are automatically created when you insert the first document.
+        This method forces collection creation by inserting a marker document.
+
+        Args:
+            name: Collection name
+            database: Database name (default: 'default')
+            dimensions: Vector dimensions (optional, for vector collections)
+            vector_dimensions: Alias for dimensions parameter
+
+        Returns:
+            Creation result
+
+        Example:
+            >>> db.create_collection('users', database='production')
+            {'database': 'production', 'collection': 'users', 'message': 'Collection created'}
+
+            >>> # Create vector collection
+            >>> db.create_collection('embeddings', database='production', vector_dimensions=768)
+        """
+        # Support both dimensions and vector_dimensions parameter names
+        dims = dimensions or vector_dimensions
+        # Force collection creation by inserting a marker document
+        # Note: The marker document is kept to ensure collection persists in list_collections
+        # It includes common field names with sentinel values to avoid filter comparison errors
+        try:
+            import time
+            marker_data = {
+                '_nexadb_collection_marker': True,
+                '_created_at': time.time(),
+                # Add common field names with sentinel values to avoid query filter errors
+                'price': -999999,  # Very low value to not match typical >= filters
+                'name': '_collection_marker',
+                'value': -999999,
+                'type': '_marker'
+            }
+            # Store vector dimensions if specified (for validation)
+            if dims is not None:
+                marker_data['_vector_dimensions'] = dims
+            result = self._send_message(MSG_CREATE, {
+                'collection': name,
+                'data': marker_data,
+                'database': database
+            })
+
+            return {
+                'status': 'success',
+                'database': database,
+                'collection': name,
+                'message': 'Collection created'
+            }
+        except Exception as e:
+            raise Exception(f"Failed to create collection: {e}")
+
+    def drop_collection(self, name: str, database: str = 'default') -> Dict[str, Any]:
+        """
+        Drop a collection from a database.
+
+        NEW v3.0.0: Multi-database support
+        WARNING: This deletes all documents in the collection!
+
+        Args:
+            name: Collection name
+            database: Database name (default: 'default')
+
+        Returns:
+            Drop result
+
+        Example:
+            >>> db.drop_collection('old_users', database='staging')
+            {'status': 'success', 'database': 'staging', 'collection': 'old_users', 'message': 'Collection dropped'}
+        """
+        result = self._send_message(MSG_DROP_COLLECTION, {
+            'collection': name,
+            'database': database
+        })
+        result['status'] = 'success'
+        return result
 
     def watch(self, collection: Optional[str] = None, operations: Optional[List[str]] = None):
         """

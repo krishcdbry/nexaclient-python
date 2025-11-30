@@ -10,7 +10,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
     long_description = f.read()
 
 # Read version
-version = '2.3.0'
+version = '3.0.0'
 
 setup(
     name='nexaclient',
@@ -18,11 +18,11 @@ setup(
     description='Official Python client for NexaDB - The high-performance, easy-to-use database',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    author='NexaDB Team',
-    author_email='team@nexadb.dev',
+    author='Krish',
+    author_email='krishcdbry@gmail.com',
     url='https://github.com/krishcdbry/nexaclient-python',
     project_urls={
-        'Documentation': 'https://nexadb.dev/docs',
+        'Documentation': 'https://nexadb.io/docs',
         'Source': 'https://github.com/krishcdbry/nexaclient-python',
         'Tracker': 'https://github.com/krishcdbry/nexaclient-python/issues',
     },
