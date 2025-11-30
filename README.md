@@ -1,15 +1,18 @@
 # NexaClient (Python)
 
-Official Python client for NexaDB - The high-performance, easy-to-use database.
+Official Python client for NexaDB v3.0.0 - The high-performance, easy-to-use database.
 
 ## Features
 
+- **Multi-database support** - Manage multiple isolated databases in one instance (NEW in v3.0.0)
 - **3-10x faster than HTTP/REST** - Binary protocol with MessagePack encoding
 - **Persistent TCP connections** - No HTTP overhead
 - **Context manager support** - Pythonic `with` statement
 - **Type hints** - Full type annotations for better IDE support
 - **Automatic reconnection** - Built-in connection management
 - **Connection pooling** - Handle 1000+ concurrent operations
+- **Vector search** - Built-in HNSW vector similarity search
+- **TOON format** - 40-50% token reduction for LLM applications
 
 ## Installation
 
@@ -284,8 +287,35 @@ MIT
 
 - [NexaDB GitHub](https://github.com/krishcdbry/nexadb)
 - [Python Client GitHub](https://github.com/krishcdbry/nexaclient-python)
-- [Documentation](https://nexadb.dev/docs)
+- [Documentation](https://nexadb.io/docs)
 - [NPM Client](https://www.npmjs.com/package/nexaclient)
+
+## Multi-Database Support (v3.0.0)
+
+```python
+from nexaclient import NexaClient
+
+with NexaClient() as db:
+    # Create multiple databases
+    db.create_database('tenant_acme')
+    db.create_database('tenant_globex')
+
+    # Insert data into specific database
+    db.create('users', {'name': 'Alice'}, database='tenant_acme')
+    db.create('users', {'name': 'Bob'}, database='tenant_globex')
+
+    # Query from specific database
+    acme_users = db.query('users', {}, database='tenant_acme')
+    globex_users = db.query('users', {}, database='tenant_globex')
+
+    # List all databases
+    databases = db.list_databases()
+    print(f"Total databases: {len(databases)}")
+
+    # Get database statistics
+    stats = db.get_database_stats('tenant_acme')
+    print(f"Collections: {stats['num_collections']}")
+```
 
 ## Contributing
 
@@ -295,4 +325,5 @@ Contributions are welcome! Please open an issue or PR on GitHub.
 
 For support, please:
 - Open an issue on [GitHub](https://github.com/krishcdbry/nexaclient-python/issues)
-- Email: support@nexadb.dev
+- Website: https://nexadb.io
+- Email: krishcdbry@gmail.com
