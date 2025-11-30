@@ -31,6 +31,7 @@ MSG_QUERY_TOON = 0x0B
 MSG_EXPORT_TOON = 0x0C
 MSG_LIST_COLLECTIONS = 0x20
 MSG_DROP_COLLECTION = 0x21
+MSG_GET_VECTORS = 0x23  # Get vector statistics
 MSG_SUBSCRIBE_CHANGES = 0x30
 MSG_UNSUBSCRIBE_CHANGES = 0x31
 
@@ -593,6 +594,23 @@ class NexaClient:
             'database': database
         })
         return response.get('collections', [])
+
+    def get_vectors(self) -> Dict[str, Any]:
+        """
+        Get vector index statistics across all databases and collections.
+
+        NEW v3.0.5: Vector statistics endpoint
+
+        Returns:
+            Dictionary with vector index statistics
+
+        Example:
+            >>> stats = db.get_vectors()
+            >>> print(stats)
+            {'total_vectors': 1000, 'indexes': [...]}
+        """
+        response = self._send_message(MSG_GET_VECTORS, {})
+        return response
 
     # NEW v3.0.0: Database Management Methods
 
